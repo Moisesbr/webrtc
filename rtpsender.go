@@ -5,12 +5,13 @@ import (
 	"sync"
 
 	"github.com/pions/rtcp"
+	"github.com/pions/srtp"
 )
 
 // RTPSender allows an application to control how a given Track is encoded and transmitted to a remote peer
 type RTPSender struct {
 	track          *Track
-	rtcpReadStream *lossyReadCloser
+	rtcpReadStream *srtp.ReadStreamSRTCP
 
 	transport *DTLSTransport
 
@@ -66,11 +67,11 @@ func (r *RTPSender) Send(parameters RTPSendParameters) error {
 	if err != nil {
 		return err
 	}
-	srtcpReadStream, err := srtcpSession.OpenReadStream(parameters.Encodings.SSRC)
+
+	r.rtcpReadStream, err = srtcpSession.OpenReadStream(parameters.Encodings.SSRC)
 	if err != nil {
 		return err
 	}
-	r.rtcpReadStream = newLossyReadCloser(srtcpReadStream)
 
 	r.track.mu.Lock()
 	r.track.senders = append(r.track.senders, r)

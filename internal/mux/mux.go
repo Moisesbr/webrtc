@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/pions/transport/packetio"
 )
 
 // Mux allows multiplexing
@@ -32,10 +34,8 @@ func NewMux(conn net.Conn, bufferSize int) *Mux {
 // NewEndpoint creates a new Endpoint
 func (m *Mux) NewEndpoint(f MatchFunc) *Endpoint {
 	e := &Endpoint{
-		mux:     m,
-		readCh:  make(chan []byte),
-		wroteCh: make(chan int),
-		doneCh:  make(chan struct{}),
+		mux:    m,
+		buffer: packetio.NewBuffer(),
 	}
 
 	m.lock.Lock()
@@ -56,7 +56,11 @@ func (m *Mux) RemoveEndpoint(e *Endpoint) {
 func (m *Mux) Close() error {
 	m.lock.Lock()
 	for e := range m.endpoints {
-		e.close()
+		err := e.close()
+		if err != nil {
+			return err
+		}
+
 		delete(m.endpoints, e)
 	}
 	m.lock.Unlock()
@@ -76,6 +80,7 @@ func (m *Mux) readLoop() {
 	defer func() {
 		close(m.closedCh)
 	}()
+
 	buf := make([]byte, m.bufferSize)
 	for {
 		n, err := m.nextConn.Read(buf)
@@ -83,11 +88,14 @@ func (m *Mux) readLoop() {
 			return
 		}
 
-		m.dispatch(buf[:n])
+		err = m.dispatch(buf[:n])
+		if err != nil {
+			return
+		}
 	}
 }
 
-func (m *Mux) dispatch(buf []byte) {
+func (m *Mux) dispatch(buf []byte) error {
 	var endpoint *Endpoint
 
 	m.lock.Lock()
@@ -101,17 +109,13 @@ func (m *Mux) dispatch(buf []byte) {
 
 	if endpoint == nil {
 		fmt.Printf("Warning: mux: no endpoint for packet starting with %d\n", buf[0])
-		return
+		return nil
 	}
 
-	select {
-	case readBuf, ok := <-endpoint.readCh:
-		if !ok {
-			return
-		}
-		n := copy(readBuf, buf)
-		endpoint.wroteCh <- n
-	case <-endpoint.doneCh:
-		return
+	_, err := endpoint.buffer.Write(buf)
+	if err != nil {
+		return err
 	}
+
+	return nil
 }

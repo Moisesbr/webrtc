@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pions/stun"
+	"github.com/pions/transport/packetio"
 	"github.com/pions/webrtc/internal/util"
 	"github.com/pkg/errors"
 )
@@ -71,17 +72,11 @@ type Agent struct {
 	selectedPair *candidatePair
 	validPairs   []*candidatePair
 
-	// Channel for reading
-	rcvCh chan *bufIn
+	buffer *packetio.Buffer
 
 	// State for closing
 	done chan struct{}
 	err  atomicError
-}
-
-type bufIn struct {
-	buf  []byte
-	size chan int
 }
 
 func (a *Agent) ok() error {
@@ -137,7 +132,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		localPwd:    util.RandSeq(32),
 		taskChan:    make(chan task),
 		onConnected: make(chan struct{}),
-		rcvCh:       make(chan *bufIn),
+		buffer:      packetio.NewBuffer(),
 		done:        make(chan struct{}),
 		portmin:     config.PortMin,
 		portmax:     config.PortMax,
@@ -589,6 +584,11 @@ func (a *Agent) Close() error {
 				}
 			}
 			delete(agent.remoteCandidates, net)
+		}
+
+		err := a.buffer.Close()
+		if err != nil {
+			iceLog.Warnf("failed to close buffer: %v", err)
 		}
 	})
 	if err != nil {

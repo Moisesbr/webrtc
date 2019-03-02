@@ -1009,13 +1009,13 @@ func (pc *PeerConnection) drainSRTP() {
 			go func() {
 				rtpBuf := make([]byte, receiveMTU)
 				for {
-					_, rtpHeader, err := r.ReadRTP(rtpBuf)
+					packet, err := r.ReadRTP(rtpBuf)
 					if err != nil {
 						pcLog.Warnf("Failed to read, drainSRTP done for: %v %d \n", err, ssrc)
 						return
 					}
 
-					pcLog.Debugf("got RTP: %+v", rtpHeader)
+					pcLog.Debugf("got RTP: %+v", packet.Header)
 				}
 			}()
 		}
@@ -1037,12 +1037,12 @@ func (pc *PeerConnection) drainSRTP() {
 		go func() {
 			rtcpBuf := make([]byte, receiveMTU)
 			for {
-				_, header, err := r.ReadRTCP(rtcpBuf)
+				packet, err := r.ReadRTCP(rtcpBuf)
 				if err != nil {
 					pcLog.Warnf("Failed to read, drainSRTCP done for: %v %d \n", err, ssrc)
 					return
 				}
-				pcLog.Debugf("got RTCP: %+v", header)
+				pcLog.Debugf("got RTCP: %+v", packet.Header())
 			}
 		}()
 	}
